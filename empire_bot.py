@@ -3,6 +3,7 @@ import logging
 import websockets as ws
 import json
 import re
+import time
 from typing import Optional, Dict, Callable
 from websockets.exceptions import ConnectionClosed
 
@@ -108,10 +109,50 @@ class MapScanner(Feature):
         with open("map_scan_results.json", "w") as f:
             json.dump(self.map_data, f, indent=2)
 
+class CommanderHandler:
+    """Class to handle fetching commander movement data from gam messages during login."""
+    def __init__(self, bot: 'EmpireBot'):
+        self.bot = bot
+        self.websocket = None
+        self.saves_data = True  # This component saves data
+        self.message_index = 0  # Index for gam message files
+
+    def reset_index(self):
+        """Reset message index at the start of a login session."""
+        self.message_index = 0
+
+    async def handle_message(self, message: str):
+        """Handle and save responses starting with %xt%gam%1%0% to indexed files."""
+        if message.startswith('%xt%gam%1%0%'):
+            try:
+                # Log the raw message for debugging
+                logging.debug(f"Received gam message: {message[:200]}...")
+                # Extract JSON from the gam packet
+                json_data = re.sub(r'^%xt%gam%1%0%|\%$', '', message)
+                if json_data:
+                    data = json.loads(json_data)
+                    # Log the parsed data
+                    logging.debug(f"Parsed gam data: {json.dumps(data, indent=2)}")
+                    # Skip saving if data is empty
+                    if data.get("M") == [] and data.get("O") == []:
+                        logging.info("Skipping empty gam data")
+                        return
+                    # Increment index and save to file
+                    self.message_index += 1
+                    filename = f"gam_{self.message_index}.json"
+                    with open(filename, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2)
+                    logging.info(f"Saved commander data to {filename}")
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to decode gam message JSON: {e} - Raw message: {message[:100]}...")
+            except Exception as e:
+                logging.error(f"Failed to save commander data: {e} - Context: {message[:100]}...")
+
 class EmpireBot:
     def __init__(self, config):
         self.config = config
         self.websocket = None
+        self.commander_handler = CommanderHandler(self)
         self.features: Dict[str, Feature] = {
             "map_scan": MapScanner(self)
         }
@@ -167,6 +208,8 @@ class EmpireBot:
                         await handler(ws, message)
                         break  # Stop after first core handler match
 
+                await self.commander_handler.handle_message(message)
+
                 # Route to features
                 for feature in self.features.values():
                     if await feature.handle_message(ws, message):
@@ -182,6 +225,8 @@ class EmpireBot:
             password=self.config.PASSWORD
         )
         await ws.send(lli_msg)
+        # Reset message index for new login session
+        self.commander_handler.reset_index()
 
     async def _send_pings(self, ws: ws.WebSocketClientProtocol, name: str, interval: int = 45):
         while True:

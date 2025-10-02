@@ -1,0 +1,23 @@
+This feature will let me join Outer Realms event and start attacking a single hardcoded coordinates RBC.
+
+Steps:
+1. Calculate max attackers unit limit per attack wave depending on the RBC level.
+2. Calculate flanks and front unit limit based on the max attackers calculated at step 1.
+3. Calculate the number of victories needed for each RBC level up.
+
+
+
+
+
+Max Attackers:
+CombatConst.getMaxAttackers(rbc_level) = 320 if rbc_level > 69 else min(260, 5 * rbc_level + 8)
+
+Flank Unit Limit:
+floor(0.2 * CombatConst.getMaxAttackers(rbc_level))
+
+Front Unit Limit:
+floor(0.6 * CombatConst.getMaxAttackers(rbc_level))
+
+Victory Wins (rbc_level, kingdom_id = 1 (should be 0 but it's 1 due to calling other functions meanwhile)):
+floor(pow((rbc_level + 1 - 1) / 1.9, 1.8)) - floor(pow((rbc_level - 1) / 1.9, 1.8))
+
