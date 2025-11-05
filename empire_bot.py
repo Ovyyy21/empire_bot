@@ -3,7 +3,6 @@ import logging
 import websockets as ws
 import json
 import re
-import time
 from typing import Optional, Dict, Callable
 from websockets.exceptions import ConnectionClosed
 
@@ -35,7 +34,7 @@ class MapScanner(Feature):
         return False
 
     async def execute(self, ws: ws.WebSocketClientProtocol):
-        green_jca_command = f'%xt%EmpireEx%jca%1%{{"CID":{self.bot.config.MC_ID},"KID":{self.bot.config.GREEN_ID}}}%'
+        green_jca_command = f'%xt%EmpireEx%jca%1%{{"CID":{self.bot.config.player_id},"KID":{self.bot.config.GREEN_ID}}}%'
         await ws.send(green_jca_command)
         await ws.send('%xt%EmpireEx%gbl%1%{}%')
 
@@ -121,23 +120,19 @@ class CommanderHandler:
         """Reset message index at the start of a login session."""
         self.message_index = 0
 
-    async def handle_message(self, message: str):
+    async def get_gam(self, message: str):
         """Handle and save responses starting with %xt%gam%1%0% to indexed files."""
         if message.startswith('%xt%gam%1%0%'):
             try:
-                # Log the raw message for debugging
+
                 logging.debug(f"Received gam message: {message[:200]}...")
-                # Extract JSON from the gam packet
+
                 json_data = re.sub(r'^%xt%gam%1%0%|\%$', '', message)
                 if json_data:
                     data = json.loads(json_data)
-                    # Log the parsed data
+
                     logging.debug(f"Parsed gam data: {json.dumps(data, indent=2)}")
-                    # Skip saving if data is empty
-                    if data.get("M") == [] and data.get("O") == []:
-                        logging.info("Skipping empty gam data")
-                        return
-                    # Increment index and save to file
+
                     self.message_index += 1
                     filename = f"gam_{self.message_index}.json"
                     with open(filename, "w", encoding="utf-8") as f:
@@ -208,7 +203,7 @@ class EmpireBot:
                         await handler(ws, message)
                         break  # Stop after first core handler match
 
-                await self.commander_handler.handle_message(message)
+                await self.commander_handler.get_gam(message)
 
                 # Route to features
                 for feature in self.features.values():
